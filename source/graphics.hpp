@@ -5,6 +5,7 @@
 
 namespace graphics::core {
     inline constexpr uint32_t kMaxObjectCount = 3;
+    inline constexpr uint32_t kMaxDescriptorsCount = kMaxObjectCount + 1;
 
     struct SceneUniforms {
         float projection[4][4];

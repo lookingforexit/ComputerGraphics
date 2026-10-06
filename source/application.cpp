@@ -3,7 +3,6 @@
 #include <cmath>
 #include <algorithm>
 #include <array>
-#include <cstdint>
 #include <cstring>
 #include <imgui.h>
 #include <vector>
@@ -81,15 +80,15 @@ namespace application {
             for (uint32_t lon = 0; lon < longitude; ++lon) {
                 const uint32_t next = (lon + 1) % longitude;
 
-                indices.insert(indices.end(), {0, 1 + next, 1 + lon});
+                indices.insert(indices.end(), {0, lon + 1, next + 1});
             }
 
             for (uint32_t ring = 0; ring < latitude - 2; ++ring) {
                 for (uint32_t lon = 0; lon < longitude; ++lon) {
                     const uint32_t next = (lon + 1) % longitude;
 
-                    const uint32_t a = 1 + ring * longitude + lon;
-                    const uint32_t b = 1 + ring * longitude + next;
+                    const uint32_t a = ring * longitude + lon + 1;
+                    const uint32_t b = ring * longitude + next + 1;
                     const uint32_t c = a + longitude;
                     const uint32_t d = b + longitude;
 
@@ -152,22 +151,22 @@ namespace application {
 
 
 bool initialize() {
-		objects[0].position = {-1.4, 0, 0};
+		objects[0].position = {-1.5, 0, 0};
 		objects[0].rotation = {0, 0, 0};
-		objects[0].scale = {0.65f, 0.65f, 0.65f};
+		objects[0].scale = {0.75f, 0.75f, 0.75f};
 		objects[0].color = {0.25, 0.75, 1, 1};
 		objects[0].phase = 0;
 
 		objects[1].position = {0, 0, 0};
 		objects[1].rotation = {0, 0, 0};
-		objects[1].scale = {0.65f, 0.65f, 0.65f};
-		objects[1].color = {1, 0.45, 0.25, 1};
+		objects[1].scale = {0.75f, 0.75f, 0.75f};
+		objects[1].color = {1, 0.5, 0.25, 1};
 		objects[1].phase = 2 * glm::pi<float>() / 3;
 
-		objects[2].position = {1.4, 0, 0};
+		objects[2].position = {1.5, 0, 0};
 		objects[2].rotation = {0, 0, 0};
-		objects[2].scale = {0.65f, 0.65f, 0.65f};
-		objects[2].color = {0.45, 1, 0.4, 1};
+		objects[2].scale = {0.75f, 0.75f, 0.75f};
+		objects[2].color = {0.5, 1, 0.5, 1};
 		objects[2].phase = 4 * glm::pi<float>() / 3;
 
 		if (!graphics::core::initialize()) {
@@ -253,7 +252,7 @@ void render(const graphics::internal::FrameData& fd) {
 
 	graphics::core::SceneUniforms scene{};
 
-	constexpr glm::mat4 view = glm::translate(glm::mat4(1), glm::vec3(0, 0, -6));
+	constexpr glm::mat4 view = glm::translate(glm::mat4(1), glm::vec3(0, 0, -7));
 
 	const glm::mat4 projection = makeProjectionMatrix(aspect);
 

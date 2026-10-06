@@ -151,8 +151,7 @@ namespace graphics::core {
             };
 
             VkPipelineLayoutCreateInfo pipeline_layout_info{};
-            pipeline_layout_info.sType =
-                VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+            pipeline_layout_info.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
             pipeline_layout_info.setLayoutCount = 2;
             pipeline_layout_info.pSetLayouts = layouts_for_pipeline;
 
@@ -163,11 +162,11 @@ namespace graphics::core {
 
             VkDescriptorPoolSize pool_size{};
             pool_size.type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-            pool_size.descriptorCount = 1 + kMaxObjectCount;
+            pool_size.descriptorCount = kMaxDescriptorsCount;
 
             VkDescriptorPoolCreateInfo pool_info{};
             pool_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
-            pool_info.maxSets = 1 + kMaxObjectCount;
+            pool_info.maxSets = kMaxDescriptorsCount;
             pool_info.poolSizeCount = 1;
             pool_info.pPoolSizes = &pool_size;
 
@@ -186,14 +185,14 @@ namespace graphics::core {
                 }
             }
 
-            std::array<VkDescriptorSetLayout, 1 + kMaxObjectCount> set_layouts{};
+            std::array<VkDescriptorSetLayout, kMaxDescriptorsCount> set_layouts{};
             set_layouts[0] = scene_set_layout;
 
             for (uint32_t i = 0; i < kMaxObjectCount; ++i) {
-                set_layouts[1 + i] = model_set_layout;
+                set_layouts[i + 1] = model_set_layout;
             }
 
-            std::array<VkDescriptorSet, 1 + kMaxObjectCount> sets{};
+            std::array<VkDescriptorSet, kMaxDescriptorsCount> sets{};
 
             VkDescriptorSetAllocateInfo allocate_info{};
             allocate_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
@@ -209,12 +208,12 @@ namespace graphics::core {
             scene_set = sets[0];
 
             for (uint32_t i = 0; i < kMaxObjectCount; ++i) {
-                model_sets[i] = sets[1 + i];
+                model_sets[i] = sets[i + 1];
             }
 
-            std::array<VkDescriptorBufferInfo, 1 + kMaxObjectCount> buffer_infos{};
+            std::array<VkDescriptorBufferInfo, kMaxDescriptorsCount> buffer_infos{};
 
-            std::array<VkWriteDescriptorSet, 1 + kMaxObjectCount> writes{};
+            std::array<VkWriteDescriptorSet, kMaxDescriptorsCount> writes{};
 
             buffer_infos[0].buffer = scene_uniform_buffer.buffer;
             buffer_infos[0].offset = 0;
@@ -228,16 +227,16 @@ namespace graphics::core {
             writes[0].pBufferInfo = &buffer_infos[0];
 
             for (uint32_t i = 0; i < kMaxObjectCount; ++i) {
-                buffer_infos[1 + i].buffer = model_uniforms_buffers[i].buffer;
-                buffer_infos[1 + i].offset = 0;
-                buffer_infos[1 + i].range = sizeof(ModelUniforms);
+                buffer_infos[i + 1].buffer = model_uniforms_buffers[i].buffer;
+                buffer_infos[i + 1].offset = 0;
+                buffer_infos[i + 1].range = sizeof(ModelUniforms);
 
-                writes[1 + i].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-                writes[1 + i].dstSet = model_sets[i];
-                writes[1 + i].dstBinding = 0;
-                writes[1 + i].descriptorCount = 1;
-                writes[1 + i].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-                writes[1 + i].pBufferInfo = &buffer_infos[1 + i];
+                writes[i + 1].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+                writes[i + 1].dstSet = model_sets[i];
+                writes[i + 1].dstBinding = 0;
+                writes[i + 1].descriptorCount = 1;
+                writes[i + 1].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+                writes[i + 1].pBufferInfo = &buffer_infos[i + 1];
             }
 
             vkUpdateDescriptorSets(context.device,writes.size(),writes.data(),0,nullptr);
