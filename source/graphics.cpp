@@ -40,9 +40,7 @@ namespace graphics::core {
             buffer_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 
             VmaAllocationCreateInfo allocation_info{};
-            allocation_info.flags =
-                VMA_ALLOCATION_CREATE_MAPPED_BIT |
-                VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT;
+            allocation_info.flags = VMA_ALLOCATION_CREATE_MAPPED_BIT | VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT;
             allocation_info.usage = VMA_MEMORY_USAGE_AUTO;
             allocation_info.requiredFlags = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT;
             allocation_info.preferredFlags = VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;

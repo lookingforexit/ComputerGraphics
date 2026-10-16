@@ -17,9 +17,8 @@
 
 namespace application {
 	namespace {
-		// 10 * (12 - 1) = 110
-		constexpr uint32_t longitude = 12;
-		constexpr uint32_t latitude = 10;
+		constexpr uint32_t longitude = 120;
+		constexpr uint32_t latitude = 100;
 
 		struct ObjectState {
 			glm::vec3 position;
@@ -143,7 +142,7 @@ namespace application {
 		        projection = glm::ortho(-half_width, half_width, -half_height, half_height,0.1f,100.0f);
 		    }
 
-		    projection[1][1] *= -1;
+		    projection[1][1] *= -1; // vulkan
 
 		    return projection;
 		}
@@ -177,13 +176,6 @@ bool initialize() {
 		std::vector<uint32_t> indices;
 
 		createSphere(vertices, indices);
-
-		// 10 * (12 - 1) = 110 vertices
-		// 6 * 12 * (10 - 1) = 648 indices
-		if (vertices.size() != 110 || indices.size() != 648) {
-			graphics::core::shutdown();
-			return false;
-		}
 
 		if (!graphics::core::getGeometry(vertices, indices)) {
 			graphics::core::shutdown();
