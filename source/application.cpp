@@ -36,7 +36,7 @@ namespace {
 
 	struct CameraState {
 		glm::vec3 position{0.0f, 0.0f, 7.0f};
-		glm::vec3 rotation_degrees{0.0f, -90.0f, 0.0f}; // pitch, yaw, roll
+		glm::vec3 rotation_degrees{0.0f, -90.0f, 0.0f};
 		float field_of_view = 60.0f;
 		float movement_speed = 4.0f;
 		float turn_speed = 75.0f;
@@ -82,7 +82,6 @@ namespace {
 		return length_squared > 1e-8f ? v / std::sqrt(length_squared) : fallback;
 	}
 
-	// Create a UV sphere. A unit sphere's smooth normal is its position vector.
 	void createSphere(std::vector<graphics::core::Vertex>& vertices,
 				   std::vector<uint32_t>& indices) {
 		vertices.clear();
@@ -140,7 +139,6 @@ namespace {
 			{.position = { 1, 0,  1}, .normal = {0, 1, 0}, .color = {1, 1, 1}},
 			{.position = {-1, 0,  1}, .normal = {0, 1, 0}, .color = {1, 1, 1}},
 		};
-		// Both triangles face the +Y direction; the plane's model matrix rotates walls upright.
 		indices = {0, 2, 1, 0, 3, 2};
 	}
 
@@ -182,7 +180,7 @@ namespace {
 			const float half_width = half_height * aspect;
 			projection = glm::ortho(-half_width, half_width, -half_height, half_height, 0.1f, 100.0f);
 		}
-		projection[1][1] *= -1.0f; // Vulkan framebuffer Y axis
+		projection[1][1] *= -1.0f;
 		return projection;
 	}
 
@@ -247,7 +245,6 @@ namespace {
 			return;
 		}
 
-		// WASD follows the camera's horizontal heading; Space/Ctrl move vertically.
 		const float yaw = glm::radians(camera.rotation_degrees.y);
 		const glm::vec3 forward(std::cos(yaw), 0.0f, std::sin(yaw));
 		const glm::vec3 right(-std::sin(yaw), 0.0f, std::cos(yaw));
@@ -272,7 +269,7 @@ namespace {
 		camera.rotation_degrees.x = std::clamp(camera.rotation_degrees.x, -89.0f, 89.0f);
 		camera.rotation_degrees.y = std::remainder(camera.rotation_degrees.y, 360.0f);
 	}
-} // namespace
+}
 
 bool initialize() {
 	objects[0] = {glm::vec3(-1.5f, 0, 0), glm::vec3(0), glm::vec3(0.75f), glm::vec4(0.25f, 0.75f, 1, 1), glm::vec3(1), 32, 0};
@@ -306,7 +303,7 @@ void update(double time, GLFWwindow* window) {
 	if (animation_playing) animation_time += delta;
 
 	ImGui::Begin("Lab 2 - Camera and lighting");
-	if (ImGui::CollapsingHeader("Lab 1: projection and animation", ImGuiTreeNodeFlags_DefaultOpen)) {
+	if (ImGui::CollapsingHeader("Projection and animation", ImGuiTreeNodeFlags_DefaultOpen)) {
 		if (ImGui::RadioButton("Perspective projection", use_perspective)) use_perspective = true;
 		if (ImGui::RadioButton("Orthographic projection", !use_perspective)) use_perspective = false;
 		ImGui::Checkbox("Animation", &animation_playing);
@@ -315,7 +312,6 @@ void update(double time, GLFWwindow* window) {
 		ImGui::SliderFloat("Rotation speed", &rotation_speed, 0, 3);
 	}
 	if (ImGui::CollapsingHeader("Camera", ImGuiTreeNodeFlags_DefaultOpen)) {
-		ImGui::TextUnformatted("WASD: move  |  Space/Ctrl: up/down  |  arrows: look");
 		ImGui::SliderFloat("Movement speed", &camera.movement_speed, 0.5f, 12.0f);
 		ImGui::SliderFloat("Turn speed", &camera.turn_speed, 20.0f, 180.0f);
 		ImGui::SliderFloat("Field of view", &camera.field_of_view, 20.0f, 110.0f);
@@ -361,7 +357,6 @@ void render(const graphics::internal::FrameData& fd) {
 		? point_lights.size() + spot_lights.size()
 		: 0));
 
-	// Three large planes form the floor and two walls of a simple studio corner.
 	const auto add_environment_surface = [&model_uniforms](const glm::vec3& position,
 													 const glm::vec3& rotation,
 													 const glm::vec3& scale,
@@ -381,8 +376,8 @@ void render(const graphics::internal::FrameData& fd) {
 		surface.specular[1] = 0.18f;
 		surface.specular[2] = 0.18f;
 		surface.material_parameters[0] = 24.0f;
-		surface.material_parameters[2] = 1.0f; // solid material color, without sphere's vertex gradient
-		surface.material_parameters[3] = 1.0f; // draw the quad geometry instead of the sphere
+		surface.material_parameters[2] = 1.0f;
+		surface.material_parameters[3] = 1.0f;
 		model_uniforms.push_back(surface);
 	};
 	add_environment_surface({0.0f, -1.15f, 0.0f}, {0, 0, 0}, {8.0f, 1.0f, 8.0f}, {0.14f, 0.17f, 0.23f});
@@ -408,7 +403,7 @@ void render(const graphics::internal::FrameData& fd) {
 			transform = glm::scale(transform, glm::vec3(radius));
 			copyMatrix(transform, marker.model);
 			marker.albedo[0] = color.r; marker.albedo[1] = color.g; marker.albedo[2] = color.b; marker.albedo[3] = 1;
-			marker.material_parameters[1] = 1.0f; // unlit visualization
+			marker.material_parameters[1] = 1.0f;
 			model_uniforms.push_back(marker);
 		};
 		const auto add_line = [&visualization_lines](const glm::vec3& a, const glm::vec3& b) {
@@ -464,4 +459,4 @@ void render(const graphics::internal::FrameData& fd) {
 	graphics::core::render(fd, scene, model_uniforms, gpu_points, gpu_spots, visualization_lines);
 }
 
-} // namespace application
+}

@@ -117,7 +117,6 @@ namespace graphics::core {
             requested = std::max<VkDeviceSize>(requested, 1);
             if (requested <= capacity) return true;
 
-            // Buffer replacement invalidates its descriptor, so wait for the prior frame first.
             if (internal::context.graphics_queue != VK_NULL_HANDLE) {
                 vkQueueWaitIdle(internal::context.graphics_queue);
             }
