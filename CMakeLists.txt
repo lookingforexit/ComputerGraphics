@@ -3,7 +3,16 @@ include(FetchContent)
 
 project(vulkan-starter-app LANGUAGES C CXX)
 
-add_executable(${PROJECT_NAME} source/main.cpp source/graphics_internal.cpp source/application.cpp source/graphics.cpp)
+add_executable(${PROJECT_NAME}
+	source/main.cpp
+	source/graphics_internal.cpp
+	source/application.cpp
+	source/camera.cpp
+	source/scene.cpp
+	source/geometry.cpp
+	source/graphics.cpp
+	source/graphics_pipeline.cpp
+)
 
 if(LINUX)
 	target_compile_options(${PROJECT_NAME} PRIVATE -Wall -Wextra -Wno-missing-field-initializers)
@@ -108,17 +117,18 @@ if(GLSLC_EXECUTABLE)
 			OUTPUT ${SHADER_BINARY_PATH}
 			COMMAND "${GLSLC_EXECUTABLE}" ${SHADER_SOURCE} -o ${SHADER_BINARY_PATH}
 			DEPENDS ${SHADER_SOURCE}
+				${CMAKE_SOURCE_DIR}/shaders/uniforms.glsl
+				${CMAKE_SOURCE_DIR}/shaders/lights.glsl
 			COMMENT "Compiling ${SHADER_FILE} shader"
 		)
 
 		list(APPEND _SHADER_BINARIES ${SHADER_BINARY_PATH})
 	endmacro()
 
-	# To compile shader file, use compile_shader function with a file name
-	# of a shader inside shaders directory. See example below:
-
-	compile_shader(shader.vert)
-	compile_shader(shader.frag)
+	compile_shader(lit.vert)
+	compile_shader(lit.frag)
+	compile_shader(unlit.vert)
+	compile_shader(unlit.frag)
 
 	add_custom_target(shaders DEPENDS ${_SHADER_BINARIES})
 	add_dependencies(${PROJECT_NAME} shaders)

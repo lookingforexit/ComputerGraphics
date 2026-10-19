@@ -82,9 +82,9 @@ int main() {
 		application::update(time, glfw_window);
 		ImGui::Render();
 
-		graphics::internal::FrameData fd = graphics::internal::prepare();
+		graphics::internal::FrameData fd = graphics::internal::prepare_frame();
 		application::render(fd);
-		graphics::internal::submitAndPresent();
+		graphics::internal::submit_and_present();
 	}
 
 	application::shutdown();
@@ -99,5 +99,5 @@ err_imgui_init:
 err_null_window:
 	glfwTerminate();
 
-	return 0;
+	return status;
 }

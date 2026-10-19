@@ -58,7 +58,7 @@ std::vector<VkFramebuffer> vk_imgui_framebuffers;
 VkCommandPool vk_imgui_command_pool;
 VkCommandBuffer vk_imgui_command_buffer;
 
-VkFormat selectDepthFormat(VkPhysicalDevice physical_device) {
+VkFormat select_depth_format(VkPhysicalDevice physical_device) {
 	const VkFormat candidates[] = {
 		VK_FORMAT_D24_UNORM_S8_UINT,
 		VK_FORMAT_D32_SFLOAT_S8_UINT,
@@ -75,7 +75,7 @@ VkFormat selectDepthFormat(VkPhysicalDevice physical_device) {
 	return VK_FORMAT_UNDEFINED;
 }
 
-bool initializeImGUI() {
+bool initialize_imgui() {
 	const VkDescriptorPoolSize descriptor_pool_sizes[] = {
 		{
 			.type = VK_DESCRIPTOR_TYPE_SAMPLER,
@@ -216,7 +216,7 @@ bool initializeImGUI() {
 	return ImGui_ImplVulkan_Init(&init);
 }
 
-void drawImGUI() {
+void draw_imgui() {
 	vkResetCommandBuffer(vk_imgui_command_buffer, 0);
 
 	const VkCommandBufferBeginInfo command_buffer_begin = {
@@ -242,7 +242,7 @@ void drawImGUI() {
 	vkEndCommandBuffer(vk_imgui_command_buffer);
 }
 
-bool rebuildSwapchain(uint32_t width, uint32_t height) {
+bool rebuild_swapchain(uint32_t width, uint32_t height) {
 	vkQueueWaitIdle(context.graphics_queue);
 
 	vkb::SwapchainBuilder sb(context.physical_device, context.device, vk_surface,
@@ -415,7 +415,7 @@ bool initialize(GLFWwindow* const window) {
 
 	auto vkb_physical_device = pds_result.value();
 
-	vk_depth_buffer_format = selectDepthFormat(vkb_physical_device.physical_device);
+	vk_depth_buffer_format = select_depth_format(vkb_physical_device.physical_device);
 	if (vk_depth_buffer_format == VK_FORMAT_UNDEFINED) {
 		std::cerr << "No supported depth/stencil attachment format found\n";
 		return false;
@@ -658,7 +658,7 @@ bool initialize(GLFWwindow* const window) {
 		return false;
 	}
 
-	if (!initializeImGUI()) {
+	if (!initialize_imgui()) {
 		std::cerr << "Failed to initialize ImGUI Vulkan rendering backend\n";
 		return false;
 	}
@@ -718,7 +718,7 @@ void resize(uint32_t width, uint32_t height) {
 	vk_swapchain_resize_require = true;
 }
 
-FrameData prepare() {
+FrameData prepare_frame() {
 	vkWaitForFences(context.device, 1, &vk_fence_frame_in_flight, VK_TRUE, UINT64_MAX);
 
 retry_acquire:
@@ -729,7 +729,7 @@ retry_acquire:
 		break;
 
 	case VK_ERROR_OUT_OF_DATE_KHR:
-		rebuildSwapchain(vk_swapchain_resize_width, vk_swapchain_resize_height);
+		rebuild_swapchain(vk_swapchain_resize_width, vk_swapchain_resize_height);
 		goto retry_acquire;
 
 	case VK_SUBOPTIMAL_KHR:
@@ -749,8 +749,8 @@ retry_acquire:
 	};
 }
 
-void submitAndPresent() {
-	drawImGUI();
+void submit_and_present() {
+	draw_imgui();
 
 	const VkPipelineStageFlags stage = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
 	const VkCommandBuffer command_buffers[] = {
@@ -784,7 +784,7 @@ void submitAndPresent() {
 	if (result == VK_ERROR_OUT_OF_DATE_KHR ||
 	    result == VK_SUBOPTIMAL_KHR ||
 	    vk_swapchain_resize_require) {
-		rebuildSwapchain(vk_swapchain_resize_width, vk_swapchain_resize_height);
+		rebuild_swapchain(vk_swapchain_resize_width, vk_swapchain_resize_height);
 	} else if (result != VK_SUCCESS) {
 		std::cerr << "Failed to present Vulkan swapchain image\n";
 	}
