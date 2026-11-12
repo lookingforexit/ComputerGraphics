@@ -10,6 +10,7 @@ add_executable(${PROJECT_NAME}
 	source/camera.cpp
 	source/scene.cpp
 	source/geometry.cpp
+	source/graphics_resources.cpp
 	source/graphics.cpp
 	source/graphics_pipeline.cpp
 )
@@ -64,6 +65,8 @@ FetchContent_Declare(
 )
 
 find_package(Vulkan REQUIRED)
+find_package(JPEG REQUIRED)
+find_package(PNG REQUIRED)
 
 set(GLFW_LIBRARY_TYPE STATIC)
 set(GLFW_BUILD_EXAMPLES OFF)
@@ -81,6 +84,8 @@ FetchContent_MakeAvailable(
 target_link_libraries(${PROJECT_NAME} PRIVATE
 	glfw
 	Vulkan::Vulkan
+	JPEG::JPEG
+	PNG::PNG
 	vk-bootstrap::vk-bootstrap
 	GPUOpen::VulkanMemoryAllocator
 	glm::glm

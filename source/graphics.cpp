@@ -1,6 +1,7 @@
 #include "graphics.hpp"
 #include "graphics_pipeline.hpp"
 #include "graphics_gpu_data.hpp"
+#include "graphics_resources.hpp"
 
 #include <algorithm>
 #include <array>
@@ -10,11 +11,10 @@
 
 namespace graphics::core {
 namespace {
-struct GPUBuffer {
-    VkBuffer buffer = VK_NULL_HANDLE;
-    VmaAllocation allocation = VK_NULL_HANDLE;
-    void *mapped = nullptr;
-};
+using detail::GPUBuffer;
+using detail::create_mapped_buffer;
+using detail::write_buffer;
+using detail::destroy_buffer;
 
 struct Mesh {
     GPUBuffer vertices;
@@ -33,75 +33,41 @@ Mesh &get_mesh(MeshKind kind) {
     return sphere_mesh;
 }
 GPUBuffer visualization_line_buffer;
+GPUBuffer visualization_line_staging;
 GPUBuffer scene_uniform_buffer;
 GPUBuffer point_light_buffer;
 GPUBuffer spot_light_buffer;
 VkDeviceSize point_light_capacity = 1;
 VkDeviceSize spot_light_capacity = 1;
-std::vector<GPUBuffer> model_uniforms_buffers;
+GPUBuffer model_uniform_buffer;
+VkDeviceSize model_stride = 0;
+size_t model_capacity = 0;
+
+constexpr size_t material_count = static_cast<size_t>(TextureKind::Count);
+// Albedo, specular and emissive images are shared by material descriptor sets.
+enum TextureImage : uint32_t {
+    hamster_image, black_image, hamster_specular_image, hamster_emissive_image,
+    tiles_image, waves_image, waves_specular_image, texture_image_count,
+};
+std::array<detail::Texture, texture_image_count> textures;
+std::array<VkDescriptorSet, material_count> material_sets{};
+VkSampler texture_sampler = VK_NULL_HANDLE;
+const TextureImage material_images[material_count][3] = {
+    {hamster_image, black_image, black_image},
+    {hamster_image, hamster_specular_image, hamster_emissive_image},
+    {tiles_image, black_image, black_image},
+    {waves_image, waves_specular_image, black_image},
+};
 
 VkDescriptorSetLayout scene_set_layout;
 VkDescriptorSetLayout model_set_layout;
 VkDescriptorPool descriptor_pool;
 
 VkDescriptorSet scene_set;
-std::vector<VkDescriptorSet> model_sets;
 
 VkPipelineLayout pipeline_layout;
 detail::Pipelines pipelines;
 VkDeviceSize visualization_line_capacity = 0;
-
-bool create_mapped_buffer(VkDeviceSize size, VkBufferUsageFlags usage, GPUBuffer &result) {
-    const auto &context = internal::context;
-
-    VkBufferCreateInfo buffer_info{};
-    buffer_info.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-    buffer_info.size = size;
-    buffer_info.usage = usage;
-    buffer_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-
-    VmaAllocationCreateInfo allocation_info{};
-    allocation_info.flags =
-        VMA_ALLOCATION_CREATE_MAPPED_BIT | VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT;
-    allocation_info.usage = VMA_MEMORY_USAGE_AUTO;
-    allocation_info.requiredFlags = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT;
-    allocation_info.preferredFlags = VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
-
-    VmaAllocationInfo allocation_result{};
-
-    const VkResult status = vmaCreateBuffer(context.allocator, &buffer_info, &allocation_info,
-                                            &result.buffer, &result.allocation, &allocation_result);
-
-    if (status != VK_SUCCESS) {
-        std::cerr << "cant create vulkan buffer\n";
-        return false;
-    }
-
-    result.mapped = allocation_result.pMappedData;
-    return true;
-}
-
-void destroy_buffer(GPUBuffer &buffer) {
-    if (buffer.buffer == VK_NULL_HANDLE) {
-        return;
-    }
-
-    const auto &context = internal::context;
-
-    vmaDestroyBuffer(context.allocator, buffer.buffer, buffer.allocation);
-    buffer = {};
-}
-
-bool write_buffer(GPUBuffer &buffer, const void *data, VkDeviceSize size) {
-    if (buffer.mapped == nullptr) {
-        return false;
-    }
-
-    std::memcpy(buffer.mapped, data, size);
-
-    return vmaFlushAllocation(internal::context.allocator, buffer.allocation, 0, size) ==
-           VK_SUCCESS;
-}
 
 bool ensure_visualization_line_capacity(size_t vertex_count) {
     const VkDeviceSize requested = vertex_count * sizeof(Vertex);
@@ -114,11 +80,17 @@ bool ensure_visualization_line_capacity(size_t vertex_count) {
     GPUBuffer replacement{};
     const VkDeviceSize new_capacity =
         std::max<VkDeviceSize>(requested, visualization_line_capacity * 2);
-    if (!create_mapped_buffer(new_capacity, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, replacement)) {
+    GPUBuffer staging;
+    if (!detail::create_device_buffer(new_capacity, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, replacement) ||
+        !create_mapped_buffer(new_capacity, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, staging)) {
+        destroy_buffer(replacement);
+        destroy_buffer(staging);
         return false;
     }
     destroy_buffer(visualization_line_buffer);
     visualization_line_buffer = replacement;
+    destroy_buffer(visualization_line_staging);
+    visualization_line_staging = staging;
     visualization_line_capacity = new_capacity;
     return true;
 }
@@ -158,40 +130,73 @@ bool ensure_light_buffer(GPUBuffer &buffer, VkDeviceSize &capacity, VkDeviceSize
     return true;
 }
 
-bool ensure_model_capacity(size_t count) {
+void update_material_descriptors() {
     const auto &context = internal::context;
-    while (model_uniforms_buffers.size() < count) {
-        GPUBuffer buffer{};
-        if (!create_mapped_buffer(sizeof(gpu::ObjectUniforms), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
-                                  buffer)) {
-            return false;
+    const VkDescriptorBufferInfo model_info{model_uniform_buffer.buffer, 0, sizeof(gpu::ObjectUniforms)};
+    for (size_t material = 0; material < material_count; ++material) {
+        std::array<VkDescriptorImageInfo, 3> images{};
+        std::array<VkWriteDescriptorSet, 4> writes{};
+        for (uint32_t binding = 0; binding < writes.size(); ++binding) {
+            auto &write = writes[binding];
+            write.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+            write.dstSet = material_sets[material];
+            write.dstBinding = binding;
+            write.descriptorCount = 1;
+            if (binding == 0) {
+                write.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
+                write.pBufferInfo = &model_info;
+            } else {
+                images[binding - 1] = {texture_sampler,
+                    textures[material_images[material][binding - 1]].view,
+                    VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL};
+                write.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+                write.pImageInfo = &images[binding - 1];
+            }
         }
-
-        VkDescriptorSet set = VK_NULL_HANDLE;
-        VkDescriptorSetAllocateInfo allocate{};
-        allocate.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
-        allocate.descriptorPool = descriptor_pool;
-        allocate.descriptorSetCount = 1;
-        allocate.pSetLayouts = &model_set_layout;
-        if (vkAllocateDescriptorSets(context.device, &allocate, &set) != VK_SUCCESS) {
-            destroy_buffer(buffer);
-            std::cerr << "unable to allocate a model descriptor set\n";
-            return false;
-        }
-
-        VkDescriptorBufferInfo info{buffer.buffer, 0, sizeof(gpu::ObjectUniforms)};
-        VkWriteDescriptorSet write{};
-        write.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-        write.dstSet = set;
-        write.dstBinding = 0;
-        write.descriptorCount = 1;
-        write.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-        write.pBufferInfo = &info;
-        vkUpdateDescriptorSets(context.device, 1, &write, 0, nullptr);
-        model_uniforms_buffers.push_back(buffer);
-        model_sets.push_back(set);
+        vkUpdateDescriptorSets(context.device, static_cast<uint32_t>(writes.size()),
+                                writes.data(), 0, nullptr);
     }
+}
+
+bool ensure_model_capacity(size_t count) {
+    if (count <= model_capacity) {
+        return true;
+    }
+    const size_t new_capacity = std::max(count, std::max<size_t>(model_capacity * 2, 16));
+    GPUBuffer replacement;
+    if (!create_mapped_buffer(model_stride * new_capacity, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
+                              replacement)) {
+        return false;
+    }
+    vkQueueWaitIdle(internal::context.graphics_queue);
+    destroy_buffer(model_uniform_buffer);
+    model_uniform_buffer = replacement;
+    model_capacity = new_capacity;
+    update_material_descriptors();
     return true;
+}
+
+bool create_textures() {
+    const char *paths[] = {"homyak.jpeg", "textures/black.png", "textures/hamster_specular.png",
+        "textures/hamster_emissive.png", "textures/tiles.png", "textures/waves.png",
+        "textures/waves_specular.png"};
+    for (size_t i = 0; i < textures.size(); ++i) {
+        // Color images are decoded from sRGB; specular masks contain linear data.
+        const bool linear = i == black_image || i == hamster_specular_image || i == waves_specular_image;
+        if (!detail::load_texture(paths[i], linear ? VK_FORMAT_R8G8B8A8_UNORM :
+                                                    VK_FORMAT_R8G8B8A8_SRGB, textures[i])) {
+            return false;
+        }
+    }
+    VkSamplerCreateInfo sampler{};
+    sampler.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
+    sampler.magFilter = VK_FILTER_LINEAR;
+    sampler.minFilter = VK_FILTER_LINEAR;
+    sampler.mipmapMode = VK_SAMPLER_MIPMAP_MODE_NEAREST;
+    sampler.addressModeU = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+    sampler.addressModeV = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+    sampler.addressModeW = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+    return vkCreateSampler(internal::context.device, &sampler, nullptr, &texture_sampler) == VK_SUCCESS;
 }
 
 bool create_descriptor_resources() {
@@ -203,9 +208,13 @@ bool create_descriptor_resources() {
         {gpu::point_lights_binding, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr},
         {gpu::spot_lights_binding, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr},
     };
-    const VkDescriptorSetLayoutBinding model_binding = {
-        0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1,
-        VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, nullptr};
+    const VkDescriptorSetLayoutBinding model_bindings[] = {
+        {0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC, 1,
+         VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, nullptr},
+        {1, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr},
+        {2, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr},
+        {3, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr},
+    };
 
     VkDescriptorSetLayoutCreateInfo layout_info{};
     layout_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
@@ -218,8 +227,8 @@ bool create_descriptor_resources() {
         return false;
     }
 
-    layout_info.bindingCount = 1;
-    layout_info.pBindings = &model_binding;
+    layout_info.bindingCount = 4;
+    layout_info.pBindings = model_bindings;
     if (vkCreateDescriptorSetLayout(context.device, &layout_info, nullptr, &model_set_layout) !=
         VK_SUCCESS) {
         std::cerr << "unable to create model set layout\n";
@@ -228,8 +237,12 @@ bool create_descriptor_resources() {
 
     const VkDescriptorSetLayout layouts_for_pipeline[] = {scene_set_layout, model_set_layout};
 
+    const VkPushConstantRange sampling_range{
+        VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(gpu::SamplingConstants)};
     VkPipelineLayoutCreateInfo pipeline_layout_info{};
     pipeline_layout_info.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+    pipeline_layout_info.pushConstantRangeCount = 1;
+    pipeline_layout_info.pPushConstantRanges = &sampling_range;
     pipeline_layout_info.setLayoutCount = 2;
     pipeline_layout_info.pSetLayouts = layouts_for_pipeline;
 
@@ -239,9 +252,11 @@ bool create_descriptor_resources() {
         return false;
     }
 
-    constexpr uint32_t descriptor_set_capacity = 4096;
+    constexpr uint32_t descriptor_set_capacity = 1 + material_count;
     const VkDescriptorPoolSize pool_sizes[] = {
-        {VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, descriptor_set_capacity},
+        {VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1},
+        {VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC, material_count},
+        {VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, material_count * 3},
         {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 2},
     };
 
@@ -249,7 +264,7 @@ bool create_descriptor_resources() {
     pool_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
     pool_info.flags = VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT;
     pool_info.maxSets = descriptor_set_capacity;
-    pool_info.poolSizeCount = 2;
+    pool_info.poolSizeCount = 4;
     pool_info.pPoolSizes = pool_sizes;
 
     if (vkCreateDescriptorPool(context.device, &pool_info, nullptr, &descriptor_pool) !=
@@ -296,7 +311,18 @@ bool create_descriptor_resources() {
     vkUpdateDescriptorSets(context.device, static_cast<uint32_t>(writes.size()), writes.data(), 0,
                            nullptr);
 
-    return true;
+    std::array<VkDescriptorSetLayout, material_count> material_layouts;
+    material_layouts.fill(model_set_layout);
+    allocate_info.descriptorSetCount = material_count;
+    allocate_info.pSetLayouts = material_layouts.data();
+    if (vkAllocateDescriptorSets(context.device, &allocate_info, material_sets.data()) != VK_SUCCESS) {
+        return false;
+    }
+    VkPhysicalDeviceProperties properties{};
+    vkGetPhysicalDeviceProperties(context.physical_device, &properties);
+    const VkDeviceSize alignment = properties.limits.minUniformBufferOffsetAlignment;
+    model_stride = (sizeof(gpu::ObjectUniforms) + alignment - 1) / alignment * alignment;
+    return ensure_model_capacity(16);
 }
 
 glm::vec3 normalized_light_direction(const glm::vec3 &direction) {
@@ -390,15 +416,16 @@ bool upload_frame_data(const RenderFrame &frame) {
 
     for (size_t i = 0; i < frame.objects.size(); ++i) {
         const auto object = make_object_uniforms(frame.objects[i]);
-        if (!write_buffer(model_uniforms_buffers[i], &object, sizeof(object))) {
+        if (!write_buffer(model_uniform_buffer, &object, sizeof(object), i * model_stride)) {
             return false;
         }
     }
     if (!frame.light_lines.empty()) {
         const size_t line_model_index = frame.objects.size();
         const gpu::ObjectUniforms line_object{};
-        if (!write_buffer(model_uniforms_buffers[line_model_index], &line_object, sizeof(line_object)) ||
-            !write_buffer(visualization_line_buffer, frame.light_lines.data(),
+        if (!write_buffer(model_uniform_buffer, &line_object, sizeof(line_object),
+                          line_model_index * model_stride) ||
+            !write_buffer(visualization_line_staging, frame.light_lines.data(),
                           frame.light_lines.size() * sizeof(Vertex))) {
             return false;
         }
@@ -418,6 +445,20 @@ void record_draw_commands(const internal::FrameData &fd, const RenderFrame &fram
     if (vkBeginCommandBuffer(fd.command_buffer, &command_begin) != VK_SUCCESS) {
         std::cerr << "unable to start writing command buffer\n";
         return;
+    }
+
+    // The previous frame's fence protects both buffers while the CPU updates staging.
+    if (!frame.light_lines.empty()) {
+        const VkBufferCopy copy{0, 0, frame.light_lines.size() * sizeof(Vertex)};
+        vkCmdCopyBuffer(fd.command_buffer, visualization_line_staging.buffer,
+                         visualization_line_buffer.buffer, 1, &copy);
+        VkMemoryBarrier barrier{};
+        barrier.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER;
+        barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+        barrier.dstAccessMask = VK_ACCESS_VERTEX_ATTRIBUTE_READ_BIT;
+        vkCmdPipelineBarrier(fd.command_buffer, VK_PIPELINE_STAGE_TRANSFER_BIT,
+                              VK_PIPELINE_STAGE_VERTEX_INPUT_BIT, 0,
+                              1, &barrier, 0, nullptr, 0, nullptr);
     }
 
     VkClearValue clear_values[2]{};
@@ -460,10 +501,16 @@ void record_draw_commands(const internal::FrameData &fd, const RenderFrame &fram
         vkCmdBindPipeline(fd.command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
         vkCmdBindVertexBuffers(fd.command_buffer, 0, 1, &mesh.vertices.buffer, &vertex_offset);
         vkCmdBindIndexBuffer(fd.command_buffer, mesh.indices.buffer, 0, VK_INDEX_TYPE_UINT32);
-        const VkDescriptorSet sets[] = {scene_set, model_sets[i]};
+        const auto material = static_cast<size_t>(object.material.texture);
+        const VkDescriptorSet sets[] = {scene_set, material_sets[material]};
+        const uint32_t dynamic_offset = static_cast<uint32_t>(i * model_stride);
+        const gpu::SamplingConstants sampling{
+            object.sampling.animated ? 1u : 0u, frame.time, object.sampling.strength};
+        vkCmdPushConstants(fd.command_buffer, pipeline_layout, VK_SHADER_STAGE_FRAGMENT_BIT,
+                            0, sizeof(sampling), &sampling);
 
         vkCmdBindDescriptorSets(fd.command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_layout,
-                                0, 2, sets, 0, nullptr);
+                                0, 2, sets, 1, &dynamic_offset);
         vkCmdDrawIndexed(fd.command_buffer, mesh.index_count, 1, 0, 0, 0);
     }
 
@@ -472,9 +519,10 @@ void record_draw_commands(const internal::FrameData &fd, const RenderFrame &fram
         vkCmdBindPipeline(fd.command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelines.lines);
         vkCmdBindVertexBuffers(fd.command_buffer, 0, 1, &visualization_line_buffer.buffer,
                                &vertex_offset);
-        const VkDescriptorSet sets[] = {scene_set, model_sets[line_model_index]};
+        const VkDescriptorSet sets[] = {scene_set, material_sets[0]};
+        const uint32_t dynamic_offset = static_cast<uint32_t>(line_model_index * model_stride);
         vkCmdBindDescriptorSets(fd.command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_layout,
-                                0, 2, sets, 0, nullptr);
+                                0, 2, sets, 1, &dynamic_offset);
         vkCmdDraw(fd.command_buffer, static_cast<uint32_t>(frame.light_lines.size()), 1, 0, 0);
     }
 
@@ -487,7 +535,7 @@ void record_draw_commands(const internal::FrameData &fd, const RenderFrame &fram
 }
 
 bool initialize() {
-    if (!create_descriptor_resources() ||
+    if (!create_textures() || !create_descriptor_resources() ||
         !detail::create_pipelines(internal::context.device, internal::context.render_pass,
                                   pipeline_layout, pipelines)) {
         shutdown();
@@ -523,11 +571,17 @@ void shutdown() {
     destroy_buffer(scene_uniform_buffer);
     destroy_buffer(point_light_buffer);
     destroy_buffer(spot_light_buffer);
-    for (GPUBuffer &buffer : model_uniforms_buffers) {
-        destroy_buffer(buffer);
+    destroy_buffer(model_uniform_buffer);
+    model_capacity = 0;
+    model_stride = 0;
+    material_sets.fill(VK_NULL_HANDLE);
+    for (auto &texture : textures) {
+        detail::destroy_texture(texture);
     }
-    model_uniforms_buffers.clear();
-    model_sets.clear();
+    if (texture_sampler != VK_NULL_HANDLE) {
+        vkDestroySampler(context.device, texture_sampler, nullptr);
+        texture_sampler = VK_NULL_HANDLE;
+    }
     destroy_buffer(sphere_mesh.vertices);
     destroy_buffer(sphere_mesh.indices);
     destroy_buffer(plane_mesh.vertices);
@@ -535,6 +589,7 @@ void shutdown() {
     sphere_mesh = {};
     plane_mesh = {};
     destroy_buffer(visualization_line_buffer);
+    destroy_buffer(visualization_line_staging);
 
     if (scene_set_layout != VK_NULL_HANDLE) {
         vkDestroyDescriptorSetLayout(context.device, scene_set_layout, nullptr);
@@ -561,10 +616,10 @@ bool upload_mesh(MeshKind kind, const MeshData &data) {
     Mesh replacement;
     const VkDeviceSize vertex_bytes = data.vertices.size() * sizeof(Vertex);
     const VkDeviceSize index_bytes = data.indices.size() * sizeof(uint32_t);
-    if (!create_mapped_buffer(vertex_bytes, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, replacement.vertices) ||
-        !create_mapped_buffer(index_bytes, VK_BUFFER_USAGE_INDEX_BUFFER_BIT, replacement.indices) ||
-        !write_buffer(replacement.vertices, data.vertices.data(), vertex_bytes) ||
-        !write_buffer(replacement.indices, data.indices.data(), index_bytes)) {
+    if (!detail::upload_device_buffer(data.vertices.data(), vertex_bytes,
+                                       VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, replacement.vertices) ||
+        !detail::upload_device_buffer(data.indices.data(), index_bytes,
+                                       VK_BUFFER_USAGE_INDEX_BUFFER_BIT, replacement.indices)) {
         destroy_buffer(replacement.vertices);
         destroy_buffer(replacement.indices);
         return false;

@@ -47,6 +47,7 @@ struct PipelineDescription {
     const char *vertex_shader_path;
     const char *fragment_shader_path;
     VkPrimitiveTopology topology;
+    bool uses_material = false;
 };
 
 bool create_pipeline(VkDevice device, VkRenderPass render_pass, VkPipelineLayout layout,
@@ -83,7 +84,7 @@ bool create_pipeline(VkDevice device, VkRenderPass render_pass, VkPipelineLayout
     vertex_binding.stride = sizeof(Vertex);
     vertex_binding.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
 
-    VkVertexInputAttributeDescription attributes[3]{};
+    VkVertexInputAttributeDescription attributes[4]{};
 
     attributes[0].location = 0;
     attributes[0].binding = 0;
@@ -100,11 +101,16 @@ bool create_pipeline(VkDevice device, VkRenderPass render_pass, VkPipelineLayout
     attributes[2].format = VK_FORMAT_R32G32B32_SFLOAT;
     attributes[2].offset = offsetof(Vertex, color);
 
+    attributes[3].location = 3;
+    attributes[3].binding = 0;
+    attributes[3].format = VK_FORMAT_R32G32_SFLOAT;
+    attributes[3].offset = offsetof(Vertex, texcoord);
+
     VkPipelineVertexInputStateCreateInfo vertex_input{};
     vertex_input.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
     vertex_input.vertexBindingDescriptionCount = 1;
     vertex_input.pVertexBindingDescriptions = &vertex_binding;
-    vertex_input.vertexAttributeDescriptionCount = 3;
+    vertex_input.vertexAttributeDescriptionCount = description.uses_material ? 4 : 1;
     vertex_input.pVertexAttributeDescriptions = attributes;
 
     VkPipelineInputAssemblyStateCreateInfo input_assembly{};
@@ -187,6 +193,7 @@ bool create_pipelines(VkDevice device, VkRenderPass render_pass, VkPipelineLayou
         .vertex_shader_path = "shaders/lit.vert.spv",
         .fragment_shader_path = "shaders/lit.frag.spv",
         .topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST,
+        .uses_material = true,
     };
     const PipelineDescription unlit{
         .vertex_shader_path = "shaders/unlit.vert.spv",

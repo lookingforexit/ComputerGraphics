@@ -47,40 +47,42 @@ glm::mat4 Transform::matrix() const {
 Scene make_default_scene() {
     Scene scene;
 
-    SceneObject blue_sphere{
-        .name = "Blue sphere",
+    SceneObject hamster_sphere{
+        .name = "Hamster sphere",
         .transform = {
             .position = {-1.5f, 0.0f, 0.0f},
+            .rotation_radians = {0.0f, glm::half_pi<float>(), 0.0f},
             .scale = glm::vec3(0.75f),
         },
         .material = {
-            .albedo = {0.25f, 0.75f, 1.0f, 1.0f},
+            .albedo = glm::vec4(1.0f),
             .specular_color = glm::vec3(1.0f),
             .shininess = 32.0f,
-            .use_vertex_color = true,
+            .use_vertex_color = false,
         },
         .orbit_phase_radians = 0.0f,
     };
 
-    SceneObject orange_sphere = blue_sphere;
-    orange_sphere.name = "Orange sphere";
-    orange_sphere.transform.position = {0.0f, 0.0f, 0.0f};
-    orange_sphere.material.albedo = {1.0f, 0.5f, 0.25f, 1.0f};
-    orange_sphere.orbit_phase_radians = glm::two_pi<float>() / 3.0f;
+    SceneObject animated_sphere = hamster_sphere;
+    animated_sphere.name = "Animated hamster";
+    animated_sphere.transform.position = {0.0f, 0.0f, 0.0f};
+    animated_sphere.sampling.animated = true;
+    animated_sphere.orbit_phase_radians = glm::two_pi<float>() / 3.0f;
 
-    SceneObject green_sphere = blue_sphere;
-    green_sphere.name = "Green sphere";
-    green_sphere.transform.position = {1.5f, 0.0f, 0.0f};
-    green_sphere.material.albedo = {0.5f, 1.0f, 0.5f, 1.0f};
-    green_sphere.orbit_phase_radians = 2.0f * glm::two_pi<float>() / 3.0f;
+    SceneObject glowing_sphere = hamster_sphere;
+    glowing_sphere.name = "Glowing hamster";
+    glowing_sphere.transform.position = {1.5f, 0.0f, 0.0f};
+    glowing_sphere.material.texture = graphics::core::TextureKind::HamsterEffects;
+    glowing_sphere.orbit_phase_radians = 2.0f * glm::two_pi<float>() / 3.0f;
 
-    scene.objects = {blue_sphere, orange_sphere, green_sphere};
+    scene.objects = {hamster_sphere, animated_sphere, glowing_sphere};
 
     const graphics::core::Material room_material{
         .albedo = {0.14f, 0.17f, 0.23f, 1.0f},
         .specular_color = glm::vec3(0.18f),
         .shininess = 24.0f,
         .use_vertex_color = false,
+        .texture = graphics::core::TextureKind::Tiles,
     };
 
     SceneObject floor{
@@ -139,6 +141,7 @@ graphics::core::RenderFrame Scene::make_render_frame(const Camera &camera, float
     graphics::core::RenderFrame frame;
     frame.view_projection = camera.projection_matrix(aspect) * camera.view_matrix();
     frame.camera_position = camera.position;
+    frame.time = static_cast<float>(animation.time);
     frame.ambient = ambient;
     frame.directional = directional;
     frame.point_lights = point_lights;
@@ -153,6 +156,7 @@ graphics::core::RenderFrame Scene::make_render_frame(const Camera &camera, float
             .shading = graphics::core::Shading::Lit,
             .model = surface.transform.matrix(),
             .material = surface.material,
+            .sampling = surface.sampling,
         });
     }
     for (const SceneObject &object : objects) {
@@ -161,6 +165,7 @@ graphics::core::RenderFrame Scene::make_render_frame(const Camera &camera, float
             .shading = graphics::core::Shading::Lit,
             .model = animate_object(object, animation).matrix(),
             .material = object.material,
+            .sampling = object.sampling,
         });
     }
 

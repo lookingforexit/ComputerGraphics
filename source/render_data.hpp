@@ -8,11 +8,22 @@ namespace graphics::core {
 
 enum class MeshKind { Sphere, Plane };
 enum class Shading { Lit, Unlit };
+enum class TextureKind { Hamster, HamsterEffects, Tiles, Waves, Count };
+
+inline constexpr const char *texture_names[] = {
+    "homyak.jpeg", "homyak.jpeg + specular / emissive", "Tiles", "Waves",
+};
+
+struct SamplingParameters {
+    bool animated = false;
+    float strength = 0.35f;
+};
 
 struct Vertex {
     glm::vec3 position{};
     glm::vec3 normal{0.0f, 1.0f, 0.0f};
     glm::vec3 color{1.0f};
+    glm::vec2 texcoord{};
 };
 
 struct MeshData {
@@ -25,6 +36,7 @@ struct Material {
     glm::vec3 specular_color{1.0f};
     float shininess = 32.0f;
     bool use_vertex_color = false;
+    TextureKind texture = TextureKind::Hamster;
 };
 
 struct AmbientLight {
@@ -58,9 +70,11 @@ struct RenderObject {
     Shading shading = Shading::Lit;
     glm::mat4 model{1.0f};
     Material material;
+    SamplingParameters sampling;
 };
 
 struct RenderFrame {
+    float time = 0.0f;
     glm::mat4 view_projection{1.0f};
     glm::vec3 camera_position{};
     AmbientLight ambient;

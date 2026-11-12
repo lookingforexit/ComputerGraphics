@@ -10,6 +10,12 @@ inline constexpr uint32_t scene_binding = 0;
 inline constexpr uint32_t point_lights_binding = 1;
 inline constexpr uint32_t spot_lights_binding = 2;
 
+struct SamplingConstants {
+    uint32_t animated = 0;
+    float time = 0.0f;
+    float strength = 0.0f;
+};
+
 struct alignas(16) SceneUniforms {
     glm::mat4 view_projection{1.0f};
     alignas(16) glm::vec3 camera_position{};

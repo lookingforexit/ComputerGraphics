@@ -101,20 +101,33 @@ void draw_camera_controls() {
     ImGui::SliderFloat("Field of view", &camera.field_of_view_degrees, 20.0f, 110.0f);
 }
 
+SceneObject &get_scene_object(size_t index) {
+    return index < scene.objects.size() ? scene.objects[index]
+                                        : scene.room[index - scene.objects.size()];
+}
+
 void draw_object_controls() {
     if (!ImGui::CollapsingHeader("Model material and transform", ImGuiTreeNodeFlags_DefaultOpen)) {
         return;
     }
 
-    if (ImGui::BeginCombo("Object", scene.objects[selected_object].name)) {
-        for (size_t i = 0; i < scene.objects.size(); ++i) {
-            if (ImGui::Selectable(scene.objects[i].name, selected_object == static_cast<int>(i))) {
+    if (ImGui::BeginCombo("Object", get_scene_object(selected_object).name)) {
+        const size_t object_count = scene.objects.size() + scene.room.size();
+        for (size_t i = 0; i < object_count; ++i) {
+            if (ImGui::Selectable(get_scene_object(i).name, selected_object == static_cast<int>(i))) {
                 selected_object = static_cast<int>(i);
             }
         }
         ImGui::EndCombo();
     }
-    SceneObject &object = scene.objects[static_cast<size_t>(selected_object)];
+    SceneObject &object = get_scene_object(selected_object);
+    int texture = static_cast<int>(object.material.texture);
+    if (ImGui::Combo("Texture", &texture, graphics::core::texture_names,
+                     static_cast<int>(graphics::core::TextureKind::Count))) {
+        object.material.texture = static_cast<graphics::core::TextureKind>(texture);
+    }
+    ImGui::Checkbox("Animated sampling", &object.sampling.animated);
+    ImGui::SliderFloat("Sampling strength", &object.sampling.strength, 0.0f, 1.0f);
     ImGui::DragFloat3("Center", glm::value_ptr(object.transform.position), 0.01f, -4, 4);
     ImGui::SliderAngle("Rotate X", &object.transform.rotation_radians.x, -180, 180);
     ImGui::SliderAngle("Rotate Y", &object.transform.rotation_radians.y, -180, 180);
@@ -127,7 +140,9 @@ void draw_object_controls() {
 }
 
 void draw_control_panel() {
-    ImGui::Begin("Lab 2 - Camera and lighting");
+    ImGui::SetNextWindowSize(ImVec2(380, 660), ImGuiCond_FirstUseEver);
+    ImGui::SetNextWindowSizeConstraints(ImVec2(360, 200), ImVec2(600, 1000));
+    ImGui::Begin("Lab 3 - Texture mapping");
     draw_animation_controls();
     draw_camera_controls();
     draw_light_controls();

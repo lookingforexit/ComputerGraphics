@@ -5,10 +5,12 @@
 layout(location = 0) in vec3 in_position;
 layout(location = 1) in vec3 in_normal;
 layout(location = 2) in vec3 in_color;
+layout(location = 3) in vec2 in_texcoord;
 
 layout(location = 0) out vec3 world_position;
 layout(location = 1) out vec3 world_normal;
 layout(location = 2) out vec3 vertex_color;
+layout(location = 3) out vec2 texcoord;
 
 void main() {
     vec4 position = object_data.model * vec4(in_position, 1.0);
@@ -16,5 +18,6 @@ void main() {
     world_position = position.xyz;
     world_normal = normalize(normal_matrix * in_normal);
     vertex_color = in_color;
+    texcoord = in_texcoord;
     gl_Position = scene.view_projection * position;
 }

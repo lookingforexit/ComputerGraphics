@@ -19,6 +19,7 @@ struct SceneObject {
     graphics::core::MeshKind mesh = graphics::core::MeshKind::Sphere;
     Transform transform;
     graphics::core::Material material;
+    graphics::core::SamplingParameters sampling;
     float orbit_phase_radians = 0.0f;
 };
 
