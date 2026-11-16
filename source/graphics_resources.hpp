@@ -23,7 +23,6 @@ bool create_device_buffer(VkDeviceSize size, VkBufferUsageFlags usage, GPUBuffer
 bool write_buffer(GPUBuffer &buffer, const void *data, VkDeviceSize size, VkDeviceSize offset = 0);
 void destroy_buffer(GPUBuffer &buffer);
 
-// The command finishes before staging resources can be destroyed or reused.
 bool submit_transfer(const std::function<void(VkCommandBuffer)> &record);
 bool upload_device_buffer(const void *data, VkDeviceSize size, VkBufferUsageFlags usage,
                            GPUBuffer &result);

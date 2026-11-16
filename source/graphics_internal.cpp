@@ -570,7 +570,6 @@ bool initialize(GLFWwindow* const window) {
 		.pDepthStencilAttachment = &render_pass_depth_attachment,
 	};
 
-	// Match the image-available semaphore wait before the automatic layout transition.
 	const VkSubpassDependency render_pass_dependency = {
 		.srcSubpass = VK_SUBPASS_EXTERNAL,
 		.dstSubpass = 0,

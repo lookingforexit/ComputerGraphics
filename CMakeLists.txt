@@ -104,7 +104,6 @@ target_sources(${PROJECT_NAME} PRIVATE
 	${imgui_SOURCE_DIR}/imgui_demo.cpp
 )
 
-# Compile shaders
 set(GLSLC_EXECUTABLE "${Vulkan_GLSLC_EXECUTABLE}")
 if(NOT GLSLC_EXECUTABLE)
 	find_program(GLSLC_EXECUTABLE NAMES glslc)

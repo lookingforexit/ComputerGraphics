@@ -20,7 +20,6 @@ graphics::core::MeshData make_sphere(uint32_t longitude_segments, uint32_t latit
     }
     auto &vertices = mesh.vertices;
     auto &indices = mesh.indices;
-    // Duplicate the seam and pole vertices so every triangle has continuous UVs.
     vertices.reserve((latitude_segments + 1) * (longitude_segments + 1));
     indices.reserve(6 * longitude_segments * (latitude_segments - 1));
     for (uint32_t lat = 0; lat <= latitude_segments; ++lat) {

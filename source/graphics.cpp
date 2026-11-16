@@ -44,7 +44,6 @@ VkDeviceSize model_stride = 0;
 size_t model_capacity = 0;
 
 constexpr size_t material_count = static_cast<size_t>(TextureKind::Count);
-// Albedo, specular and emissive images are shared by material descriptor sets.
 enum TextureImage : uint32_t {
     hamster_image, black_image, hamster_specular_image, hamster_emissive_image,
     tiles_image, waves_image, waves_specular_image, texture_image_count,
@@ -181,7 +180,6 @@ bool create_textures() {
         "textures/hamster_emissive.png", "textures/tiles.png", "textures/waves.png",
         "textures/waves_specular.png"};
     for (size_t i = 0; i < textures.size(); ++i) {
-        // Color images are decoded from sRGB; specular masks contain linear data.
         const bool linear = i == black_image || i == hamster_specular_image || i == waves_specular_image;
         if (!detail::load_texture(paths[i], linear ? VK_FORMAT_R8G8B8A8_UNORM :
                                                     VK_FORMAT_R8G8B8A8_SRGB, textures[i])) {
@@ -447,7 +445,6 @@ void record_draw_commands(const internal::FrameData &fd, const RenderFrame &fram
         return;
     }
 
-    // The previous frame's fence protects both buffers while the CPU updates staging.
     if (!frame.light_lines.empty()) {
         const VkBufferCopy copy{0, 0, frame.light_lines.size() * sizeof(Vertex)};
         vkCmdCopyBuffer(fd.command_buffer, visualization_line_staging.buffer,

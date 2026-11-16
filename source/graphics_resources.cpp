@@ -174,7 +174,6 @@ bool read_jpeg(const char *path, Image &image) {
     JPEGError error{};
     decoder.err = jpeg_std_error(&error.manager);
     error.manager.error_exit = on_jpeg_error;
-    // Keep C allocations in the decoder: libjpeg reports errors through longjmp.
     if (setjmp(error.jump)) {
         jpeg_destroy_decompress(&decoder);
         std::fclose(file);
