@@ -29,20 +29,17 @@ TextureSamples sample_material() {
     vec2 first_uv = texcoord;
     vec2 second_uv = texcoord;
     float blend = 0.0;
-    vec3 modulation = vec3(1.0);
     if (sampling.animated != 0) {
         float time = sampling.time;
         float strength = sampling.strength;
-        first_uv += strength * 0.08 * vec2(sin(texcoord.y * 18.0 + time),
+        first_uv += strength * 0.1 * vec2(sin(texcoord.y * 18.0 + time),
                                           cos(texcoord.x * 14.0 - time));
-        second_uv = texcoord * 1.7 + vec2(time * 0.035, -time * 0.025);
-        blend = strength * (0.35 + 0.15 * sin(time));
-        modulation = mix(vec3(1.0),
-            0.65 + 0.35 * cos(time + vec3(0.0, 2.0, 4.0)), strength);
+        second_uv = texcoord * 1.7 + vec2(time * 0.03, -time * 0.02);
+        blend = strength * (0.3 + 0.1 * sin(time));
     }
     TextureSamples result;
     result.albedo = mix(texture(albedo_texture, first_uv).rgb,
-                        texture(albedo_texture, second_uv).rgb, blend) * modulation;
+                        texture(albedo_texture, second_uv).rgb, blend);
     result.specular = mix(texture(specular_texture, first_uv).rgb,
                           texture(specular_texture, second_uv).rgb, blend);
     result.emissive = mix(texture(emissive_texture, first_uv).rgb,
