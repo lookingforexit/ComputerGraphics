@@ -32,10 +32,22 @@ TextureSamples sample_material() {
     if (sampling.animated != 0) {
         float time = sampling.time;
         float strength = sampling.strength;
-        first_uv += strength * 0.1 * vec2(sin(texcoord.y * 18.0 + time),
-                                          cos(texcoord.x * 14.0 - time));
-        second_uv = texcoord * 1.7 + vec2(time * 0.03, -time * 0.02);
-        blend = strength * (0.3 + 0.1 * sin(time));
+
+        vec2 center = vec2(0.5, 0.5);
+        vec2 offset = texcoord - center;
+        float dist = length(offset);
+
+        float angle = (1.0 - smoothstep(0.0, 0.5, dist)) * strength * 10.0 + time * 2.0;
+
+        float s = sin(angle);
+        float c = cos(angle);
+        first_uv = center + vec2(offset.x * c - offset.y * s, offset.x * s + offset.y * c);
+
+        float s2 = sin(-angle * 0.7);
+        float c2 = cos(-angle * 0.7);
+        second_uv = center + vec2(offset.x * c2 - offset.y * s2, offset.x * s2 + offset.y * c2) * 1.3;
+
+        blend = 0.5;
     }
     TextureSamples result;
     result.albedo = mix(texture(albedo_texture, first_uv).rgb,
