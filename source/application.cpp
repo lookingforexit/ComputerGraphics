@@ -142,10 +142,16 @@ void draw_object_controls() {
 void draw_control_panel() {
     ImGui::SetNextWindowSize(ImVec2(380, 660), ImGuiCond_FirstUseEver);
     ImGui::SetNextWindowSizeConstraints(ImVec2(360, 200), ImVec2(600, 1000));
-    ImGui::Begin("Lab 3 - Texture mapping");
+    ImGui::Begin("Lab 4 - Shadow mapping");
     draw_animation_controls();
     draw_camera_controls();
     draw_light_controls();
+    if (ImGui::CollapsingHeader("Shadows", ImGuiTreeNodeFlags_DefaultOpen)) {
+        ImGui::SliderFloat("Sun projection width", &scene.shadows.extent, 2.0f, 40.0f);
+        ImGui::SliderFloat("Depth bias", &scene.shadows.depth_bias, 0.0f, 10.0f);
+        ImGui::SliderFloat("Slope bias", &scene.shadows.slope_bias, 0.0f, 10.0f);
+        ImGui::TextUnformatted("The first spot light casts shadows");
+    }
     draw_object_controls();
     ImGui::Checkbox("Show light markers", &scene.show_light_markers);
     ImGui::End();

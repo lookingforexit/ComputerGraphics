@@ -129,6 +129,7 @@ if(GLSLC_EXECUTABLE)
 		list(APPEND _SHADER_BINARIES ${SHADER_BINARY_PATH})
 	endmacro()
 
+	compile_shader(shadow.vert)
 	compile_shader(lit.vert)
 	compile_shader(lit.frag)
 	compile_shader(unlit.vert)

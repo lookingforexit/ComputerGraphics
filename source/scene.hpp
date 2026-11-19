@@ -38,6 +38,7 @@ struct Scene {
     graphics::core::DirectionalLight directional;
     std::vector<graphics::core::PointLight> point_lights;
     std::vector<graphics::core::SpotLight> spot_lights;
+    graphics::core::ShadowSettings shadows;
     Animation animation;
     bool show_light_markers = true;
 

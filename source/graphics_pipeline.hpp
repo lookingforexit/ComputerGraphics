@@ -5,6 +5,7 @@
 namespace graphics::core::detail {
 
 struct Pipelines {
+    VkPipeline shadow = VK_NULL_HANDLE;
     VkPipeline lit = VK_NULL_HANDLE;
     VkPipeline unlit = VK_NULL_HANDLE;
     VkPipeline lines = VK_NULL_HANDLE;

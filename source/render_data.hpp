@@ -73,7 +73,14 @@ struct RenderObject {
     SamplingParameters sampling;
 };
 
+struct ShadowSettings {
+    float extent = 12.0f;
+    float depth_bias = 1.5f;
+    float slope_bias = 2.0f;
+};
+
 struct RenderFrame {
+    ShadowSettings shadows;
     float time = 0.0f;
     glm::mat4 view_projection{1.0f};
     glm::vec3 camera_position{};

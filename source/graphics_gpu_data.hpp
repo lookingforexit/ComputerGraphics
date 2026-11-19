@@ -29,6 +29,7 @@ struct alignas(16) SceneUniforms {
     uint32_t point_light_count = 0;
     uint32_t spot_light_count = 0;
     uint32_t count_padding[2]{};
+    glm::mat4 shadow_matrices[2]{glm::mat4(1.0f), glm::mat4(1.0f)};
 };
 
 struct alignas(16) ObjectUniforms {

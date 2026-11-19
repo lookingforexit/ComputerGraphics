@@ -141,6 +141,7 @@ graphics::core::RenderFrame Scene::make_render_frame(const Camera &camera, float
     graphics::core::RenderFrame frame;
     frame.view_projection = camera.projection_matrix(aspect) * camera.view_matrix();
     frame.camera_position = camera.position;
+    frame.shadows = shadows;
     frame.time = static_cast<float>(animation.time);
     frame.ambient = ambient;
     frame.directional = directional;

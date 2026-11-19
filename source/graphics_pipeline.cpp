@@ -53,9 +53,10 @@ struct PipelineDescription {
 bool create_pipeline(VkDevice device, VkRenderPass render_pass, VkPipelineLayout layout,
                      const PipelineDescription &description, VkPipeline &pipeline) {
     VkShaderModule vertex_shader = load_shader(device, description.vertex_shader_path);
-    VkShaderModule fragment_shader = load_shader(device, description.fragment_shader_path);
+    const bool shadow = description.fragment_shader_path == nullptr;
+    VkShaderModule fragment_shader = shadow ? VK_NULL_HANDLE : load_shader(device, description.fragment_shader_path);
 
-    if (vertex_shader == VK_NULL_HANDLE || fragment_shader == VK_NULL_HANDLE) {
+    if (vertex_shader == VK_NULL_HANDLE || (!shadow && fragment_shader == VK_NULL_HANDLE)) {
         if (vertex_shader != VK_NULL_HANDLE) {
             vkDestroyShaderModule(device, vertex_shader, nullptr);
         }
@@ -122,11 +123,11 @@ bool create_pipeline(VkDevice device, VkRenderPass render_pass, VkPipelineLayout
     viewport_state.viewportCount = 1;
     viewport_state.scissorCount = 1;
 
-    VkDynamicState dynamic_states[] = {VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR};
+    VkDynamicState dynamic_states[] = {VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR, VK_DYNAMIC_STATE_DEPTH_BIAS};
 
     VkPipelineDynamicStateCreateInfo dynamic_state{};
     dynamic_state.sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO;
-    dynamic_state.dynamicStateCount = 2;
+    dynamic_state.dynamicStateCount = shadow ? 3 : 2;
     dynamic_state.pDynamicStates = dynamic_states;
 
     VkPipelineRasterizationStateCreateInfo rasterization{};
@@ -135,6 +136,7 @@ bool create_pipeline(VkDevice device, VkRenderPass render_pass, VkPipelineLayout
 
     rasterization.cullMode = VK_CULL_MODE_NONE;
     rasterization.frontFace = VK_FRONT_FACE_CLOCKWISE;
+    rasterization.depthBiasEnable = shadow;
     rasterization.lineWidth = 1.0f;
 
     VkPipelineMultisampleStateCreateInfo multisampling{};
@@ -153,12 +155,17 @@ bool create_pipeline(VkDevice device, VkRenderPass render_pass, VkPipelineLayout
 
     VkPipelineColorBlendStateCreateInfo blend_state{};
     blend_state.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
-    blend_state.attachmentCount = 1;
+    blend_state.attachmentCount = shadow ? 0 : 1;
     blend_state.pAttachments = &blend_attachment;
 
+    VkPipelineRenderingCreateInfo rendering{};
+    rendering.sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO;
+    rendering.depthAttachmentFormat = VK_FORMAT_D32_SFLOAT;
+
     VkGraphicsPipelineCreateInfo pipeline_info{};
+    pipeline_info.pNext = shadow ? &rendering : nullptr;
     pipeline_info.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
-    pipeline_info.stageCount = 2;
+    pipeline_info.stageCount = shadow ? 1 : 2;
     pipeline_info.pStages = shader_stages;
     pipeline_info.pVertexInputState = &vertex_input;
     pipeline_info.pInputAssemblyState = &input_assembly;
@@ -170,7 +177,7 @@ bool create_pipeline(VkDevice device, VkRenderPass render_pass, VkPipelineLayout
     pipeline_info.pDynamicState = &dynamic_state;
     pipeline_info.layout = layout;
 
-    pipeline_info.renderPass = render_pass;
+    pipeline_info.renderPass = shadow ? VK_NULL_HANDLE : render_pass;
     pipeline_info.subpass = 0;
     pipeline_info.basePipelineIndex = -1;
 
@@ -179,7 +186,7 @@ bool create_pipeline(VkDevice device, VkRenderPass render_pass, VkPipelineLayout
     vkDestroyShaderModule(device, vertex_shader, nullptr);
     vkDestroyShaderModule(device, fragment_shader, nullptr);
     if (status != VK_SUCCESS) {
-        std::cerr << "unable to create pipeline for " << description.fragment_shader_path << '\n';
+        std::cerr << "unable to create pipeline for " << description.vertex_shader_path << '\n';
         return false;
     }
     return true;
@@ -203,7 +210,9 @@ bool create_pipelines(VkDevice device, VkRenderPass render_pass, VkPipelineLayou
     PipelineDescription lines = unlit;
     lines.topology = VK_PRIMITIVE_TOPOLOGY_LINE_LIST;
 
-    if (!create_pipeline(device, render_pass, layout, lit, pipelines.lit) ||
+    const PipelineDescription shadow{"shaders/shadow.vert.spv", nullptr, VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST};
+    if (!create_pipeline(device, render_pass, layout, shadow, pipelines.shadow) ||
+        !create_pipeline(device, render_pass, layout, lit, pipelines.lit) ||
         !create_pipeline(device, render_pass, layout, unlit, pipelines.unlit) ||
         !create_pipeline(device, render_pass, layout, lines, pipelines.lines)) {
         destroy_pipelines(device, pipelines);
@@ -213,6 +222,7 @@ bool create_pipelines(VkDevice device, VkRenderPass render_pass, VkPipelineLayou
 }
 
 void destroy_pipelines(VkDevice device, Pipelines &pipelines) {
+    vkDestroyPipeline(device, pipelines.shadow, nullptr);
     vkDestroyPipeline(device, pipelines.lit, nullptr);
     vkDestroyPipeline(device, pipelines.unlit, nullptr);
     vkDestroyPipeline(device, pipelines.lines, nullptr);
