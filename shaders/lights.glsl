@@ -18,6 +18,7 @@ struct SpotLight {
     float inner_cone_cosine;
     float outer_cone_cosine;
     vec2 cone_padding;
+    mat4 shadow_matrix;
 };
 
 layout(std430, set = 0, binding = 1) readonly buffer PointLightBuffer {

@@ -150,7 +150,7 @@ void draw_control_panel() {
         ImGui::SliderFloat("Sun projection width", &scene.shadows.extent, 2.0f, 40.0f);
         ImGui::SliderFloat("Depth bias", &scene.shadows.depth_bias, 0.0f, 10.0f);
         ImGui::SliderFloat("Slope bias", &scene.shadows.slope_bias, 0.0f, 10.0f);
-        ImGui::TextUnformatted("The first spot light casts shadows");
+        ImGui::TextUnformatted("All spot lights cast shadows");
     }
     draw_object_controls();
     ImGui::Checkbox("Show light markers", &scene.show_light_markers);

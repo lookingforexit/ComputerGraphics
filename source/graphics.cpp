@@ -72,6 +72,94 @@ VkDeviceSize visualization_line_capacity = 0;
 constexpr uint32_t shadow_size = 2048;
 std::array<detail::Texture, 2> shadow_maps;
 VkSampler shadow_sampler = VK_NULL_HANDLE;
+std::vector<VkImageView> spot_shadow_views;
+
+bool create_shadow_image(detail::Texture &map, uint32_t layers, bool array) {
+    const auto &context = internal::context;
+    VkImageCreateInfo info{};
+    info.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
+    info.imageType = VK_IMAGE_TYPE_2D;
+    info.format = VK_FORMAT_D32_SFLOAT;
+    info.extent = {shadow_size, shadow_size, 1};
+    info.mipLevels = 1;
+    info.arrayLayers = layers;
+    info.samples = VK_SAMPLE_COUNT_1_BIT;
+    info.tiling = VK_IMAGE_TILING_OPTIMAL;
+    info.usage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
+    VmaAllocationCreateInfo allocation{};
+    allocation.usage = VMA_MEMORY_USAGE_AUTO;
+    if (vmaCreateImage(context.allocator, &info, &allocation, &map.image, &map.allocation, nullptr) != VK_SUCCESS) {
+        return false;
+    }
+    VkImageViewCreateInfo view{};
+    view.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+    view.image = map.image;
+    view.viewType = array ? VK_IMAGE_VIEW_TYPE_2D_ARRAY : VK_IMAGE_VIEW_TYPE_2D;
+    view.format = info.format;
+    view.subresourceRange = {VK_IMAGE_ASPECT_DEPTH_BIT, 0, 1, 0, layers};
+    if (vkCreateImageView(context.device, &view, nullptr, &map.view) != VK_SUCCESS) {
+        return false;
+    }
+    return true;
+}
+
+void destroy_spot_shadow_views() {
+    for (VkImageView view : spot_shadow_views) {
+        vkDestroyImageView(internal::context.device, view, nullptr);
+    }
+    spot_shadow_views.clear();
+}
+
+bool resize_spot_shadows(size_t count) {
+    count = std::max<size_t>(count, 1);
+    if (count == spot_shadow_views.size()) {
+        return true;
+    }
+    const auto &context = internal::context;
+    VkPhysicalDeviceProperties properties{};
+    vkGetPhysicalDeviceProperties(context.physical_device, &properties);
+    if (count > properties.limits.maxImageArrayLayers) {
+        std::cerr << "too many spot shadow layers\n";
+        return false;
+    }
+    detail::Texture replacement;
+    std::vector<VkImageView> views(count, VK_NULL_HANDLE);
+    bool success = create_shadow_image(replacement, static_cast<uint32_t>(count), true);
+    for (uint32_t i = 0; success && i < count; ++i) {
+        VkImageViewCreateInfo view{};
+        view.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+        view.image = replacement.image;
+        view.viewType = VK_IMAGE_VIEW_TYPE_2D;
+        view.format = VK_FORMAT_D32_SFLOAT;
+        view.subresourceRange = {VK_IMAGE_ASPECT_DEPTH_BIT, 0, 1, i, 1};
+        success = vkCreateImageView(context.device, &view, nullptr, &views[i]) == VK_SUCCESS;
+    }
+    if (!success) {
+        for (VkImageView view : views) {
+            vkDestroyImageView(context.device, view, nullptr);
+        }
+        detail::destroy_texture(replacement);
+        return false;
+    }
+    vkQueueWaitIdle(context.graphics_queue);
+    destroy_spot_shadow_views();
+    detail::destroy_texture(shadow_maps[1]);
+    shadow_maps[1] = replacement;
+    spot_shadow_views = std::move(views);
+    if (scene_set != VK_NULL_HANDLE) {
+        VkDescriptorImageInfo image{shadow_sampler, shadow_maps[1].view,
+                                     VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL};
+        VkWriteDescriptorSet write{};
+        write.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+        write.dstSet = scene_set;
+        write.dstBinding = 4;
+        write.descriptorCount = 1;
+        write.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+        write.pImageInfo = &image;
+        vkUpdateDescriptorSets(context.device, 1, &write, 0, nullptr);
+    }
+    return true;
+}
 
 bool create_shadow_maps() {
     const auto &context = internal::context;
@@ -81,31 +169,8 @@ bool create_shadow_maps() {
     if ((properties.optimalTilingFeatures & required) != required) {
         return false;
     }
-    for (auto &map : shadow_maps) {
-        VkImageCreateInfo info{};
-        info.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
-        info.imageType = VK_IMAGE_TYPE_2D;
-        info.format = VK_FORMAT_D32_SFLOAT;
-        info.extent = {shadow_size, shadow_size, 1};
-        info.mipLevels = 1;
-        info.arrayLayers = 1;
-        info.samples = VK_SAMPLE_COUNT_1_BIT;
-        info.tiling = VK_IMAGE_TILING_OPTIMAL;
-        info.usage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
-        VmaAllocationCreateInfo allocation{};
-        allocation.usage = VMA_MEMORY_USAGE_AUTO;
-        if (vmaCreateImage(context.allocator, &info, &allocation, &map.image, &map.allocation, nullptr) != VK_SUCCESS) {
-            return false;
-        }
-        VkImageViewCreateInfo view{};
-        view.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
-        view.image = map.image;
-        view.viewType = VK_IMAGE_VIEW_TYPE_2D;
-        view.format = info.format;
-        view.subresourceRange = {VK_IMAGE_ASPECT_DEPTH_BIT, 0, 1, 0, 1};
-        if (vkCreateImageView(context.device, &view, nullptr, &map.view) != VK_SUCCESS) {
-            return false;
-        }
+    if (!create_shadow_image(shadow_maps[0], 1, false) || !resize_spot_shadows(1)) {
+        return false;
     }
     VkSamplerCreateInfo sampler{};
     sampler.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
@@ -121,7 +186,8 @@ bool create_shadow_maps() {
 }
 
 void record_shadows(VkCommandBuffer command, const RenderFrame &frame) {
-    for (int index = 0; index < 2; ++index) {
+    for (uint32_t index = 0; index <= spot_shadow_views.size(); ++index) {
+        const uint32_t layer = index == 0 ? 0 : index - 1;
         VkImageMemoryBarrier barrier{};
         barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
         barrier.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
@@ -129,14 +195,14 @@ void record_shadows(VkCommandBuffer command, const RenderFrame &frame) {
         barrier.dstAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
         barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
         barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-        barrier.image = shadow_maps[index].image;
-        barrier.subresourceRange = {VK_IMAGE_ASPECT_DEPTH_BIT, 0, 1, 0, 1};
+        barrier.image = shadow_maps[index == 0 ? 0 : 1].image;
+        barrier.subresourceRange = {VK_IMAGE_ASPECT_DEPTH_BIT, 0, 1, layer, 1};
         vkCmdPipelineBarrier(command, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
                              VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT,
                              0, 0, nullptr, 0, nullptr, 1, &barrier);
         VkRenderingAttachmentInfo depth{};
         depth.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
-        depth.imageView = shadow_maps[index].view;
+        depth.imageView = index == 0 ? shadow_maps[0].view : spot_shadow_views[layer];
         depth.imageLayout = barrier.newLayout;
         depth.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
         depth.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
@@ -318,7 +384,8 @@ bool create_descriptor_resources() {
         {gpu::scene_binding, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1,
          VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, nullptr},
         {gpu::point_lights_binding, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr},
-        {gpu::spot_lights_binding, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr},
+        {gpu::spot_lights_binding, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1,
+         VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, nullptr},
     };
     const VkDescriptorSetLayoutBinding model_bindings[] = {
         {0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC, 1,
@@ -522,7 +589,7 @@ std::vector<gpu::SpotLight> make_spot_light_data(const std::vector<SpotLight> &l
 
 bool upload_frame_data(const RenderFrame &frame) {
     const size_t model_count = frame.objects.size() + (frame.light_lines.empty() ? 0 : 1);
-    if (!ensure_model_capacity(model_count) ||
+    if (!resize_spot_shadows(frame.spot_lights.size()) || !ensure_model_capacity(model_count) ||
         (!frame.light_lines.empty() && !ensure_visualization_line_capacity(frame.light_lines.size())) ||
         !ensure_light_buffer<gpu::PointLight>(point_light_buffer, point_light_capacity,
                                               frame.point_lights.size(), gpu::point_lights_binding) ||
@@ -541,17 +608,17 @@ bool upload_frame_data(const RenderFrame &frame) {
     const float half_extent = frame.shadows.extent * 0.5f;
     auto projection = glm::ortho(-half_extent, half_extent, -half_extent, half_extent, 0.1f, 60.0f);
     projection[1][1] *= -1.0f;
-    scene.shadow_matrices[0] = projection * light_view(-scene.directional_direction * 25.0f,
+    scene.sun_shadow_matrix = projection * light_view(-scene.directional_direction * 25.0f,
                                                        scene.directional_direction);
-    if (!frame.spot_lights.empty()) {
-        const auto &light = frame.spot_lights.front();
+    const auto points = make_point_light_data(frame.point_lights);
+    auto spots = make_spot_light_data(frame.spot_lights);
+    for (size_t i = 0; i < frame.spot_lights.size(); ++i) {
+        const auto &light = frame.spot_lights[i];
         projection = glm::perspective(glm::radians(std::clamp(light.outer_angle_degrees * 2.0f, 1.0f, 178.0f)),
                                       1.0f, 0.1f, 60.0f);
         projection[1][1] *= -1.0f;
-        scene.shadow_matrices[1] = projection * light_view(light.position, light.direction);
+        spots[i].shadow_matrix = projection * light_view(light.position, light.direction);
     }
-    const auto points = make_point_light_data(frame.point_lights);
-    const auto spots = make_spot_light_data(frame.spot_lights);
     if (!write_buffer(scene_uniform_buffer, &scene, sizeof(scene)) ||
         !write_buffer(point_light_buffer, points.data(), points.size() * sizeof(gpu::PointLight)) ||
         !write_buffer(spot_light_buffer, spots.data(), spots.size() * sizeof(gpu::SpotLight))) {
@@ -701,6 +768,7 @@ void shutdown() {
         vkQueueWaitIdle(context.graphics_queue);
     }
 
+    destroy_spot_shadow_views();
     for (auto &map : shadow_maps) {
         detail::destroy_texture(map);
     }

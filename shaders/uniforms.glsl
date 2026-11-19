@@ -14,7 +14,7 @@ layout(std140, set = 0, binding = 0) uniform SceneUniforms {
     uint point_light_count;
     uint spot_light_count;
     uvec2 count_padding;
-    mat4 shadow_matrices[2];
+    mat4 sun_shadow_matrix;
 } scene;
 
 layout(std140, set = 1, binding = 0) uniform ObjectUniforms {

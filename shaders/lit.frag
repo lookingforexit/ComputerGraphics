@@ -20,7 +20,7 @@ layout(push_constant) uniform SamplingConstants {
 } sampling;
 
 layout(set = 0, binding = 3) uniform sampler2DShadow sun_shadow;
-layout(set = 0, binding = 4) uniform sampler2DShadow spot_shadow;
+layout(set = 0, binding = 4) uniform sampler2DArrayShadow spot_shadow;
 
 float visibility(sampler2DShadow shadow_map, mat4 matrix, vec3 position) {
     vec4 clip = matrix * vec4(position, 1.0);
@@ -34,6 +34,20 @@ float visibility(sampler2DShadow shadow_map, mat4 matrix, vec3 position) {
         return 1.0;
     }
     return texture(shadow_map, vec3(uv, projected.z));
+}
+
+float spot_visibility(uint index, vec3 position) {
+    vec4 clip = spot_buffer.lights[index].shadow_matrix * vec4(position, 1.0);
+    if (clip.w <= 0.0) {
+        return 1.0;
+    }
+    vec3 projected = clip.xyz / clip.w;
+    vec2 uv = projected.xy * 0.5 + 0.5;
+    if (projected.z <= 0.0 || projected.z >= 1.0 ||
+        any(lessThan(uv, vec2(0.0))) || any(greaterThan(uv, vec2(1.0)))) {
+        return 1.0;
+    }
+    return texture(spot_shadow, vec4(uv, float(index), projected.z));
 }
 
 struct TextureSamples {
@@ -143,13 +157,13 @@ void main() {
 
     vec3 illumination = surface.color * scene.ambient_color * scene.ambient_intensity;
     illumination += directional_lighting(surface) *
-        visibility(sun_shadow, scene.shadow_matrices[0], surface.position);
+        visibility(sun_shadow, scene.sun_shadow_matrix, surface.position);
     for (uint i = 0; i < scene.point_light_count; ++i) {
         illumination += point_lighting(surface, point_buffer.lights[i]);
     }
     for (uint i = 0; i < scene.spot_light_count; ++i) {
         illumination += spot_lighting(surface, spot_buffer.lights[i]) *
-            (i == 0 ? visibility(spot_shadow, scene.shadow_matrices[1], surface.position) : 1.0);
+            spot_visibility(i, surface.position);
     }
     out_color = vec4(illumination + texels.emissive, object_data.albedo.a);
 }
