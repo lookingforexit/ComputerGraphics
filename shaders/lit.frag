@@ -148,6 +148,9 @@ void main() {
     surface.position = world_position;
     surface.normal = normalize(world_normal);
     surface.view_direction = normalize(scene.camera_position - world_position);
+
+    bool receives_shadows = dot(surface.normal, surface.view_direction) > 0.0;
+    
     TextureSamples texels = sample_material();
     surface.color = object_data.albedo.rgb * texels.albedo;
     surface.specular = object_data.specular_color * texels.specular;
@@ -157,13 +160,13 @@ void main() {
 
     vec3 illumination = surface.color * scene.ambient_color * scene.ambient_intensity;
     illumination += directional_lighting(surface) *
-        visibility(sun_shadow, scene.sun_shadow_matrix, surface.position);
+        (receives_shadows ? visibility(sun_shadow, scene.sun_shadow_matrix, surface.position) : 1.0);
     for (uint i = 0; i < scene.point_light_count; ++i) {
         illumination += point_lighting(surface, point_buffer.lights[i]);
     }
     for (uint i = 0; i < scene.spot_light_count; ++i) {
         illumination += spot_lighting(surface, spot_buffer.lights[i]) *
-            spot_visibility(i, surface.position);
+            (receives_shadows ? spot_visibility(i, surface.position) : 1.0);
     }
     out_color = vec4(illumination + texels.emissive, object_data.albedo.a);
 }
